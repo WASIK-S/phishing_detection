@@ -23,3 +23,17 @@ A desktop GUI built using **Tkinter** allows users to:
 - View attack type and final verdict
 
 ## 📂 Project Structure
+phish-detect/
+│── data/
+│── models/
+│── results/
+│── gui_detector.py
+│── phishing_detection.py
+│── step1_environment_and_abstract.py
+│── step2_feature_engineering.py
+│── step3_merge_datasets.py
+│── step4_train_with_attacktypes.py
+│── step5_integrate_predict.py
+│── requirements.txt
+│── README.md
+│── .gitignore
