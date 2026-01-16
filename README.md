@@ -85,6 +85,9 @@ This project is developed under the principles of **Responsible AI**. It priorit
 *   **WASIK-S:** Phishing Detection & Domain Logic (Lead for Heuristic Engine, Feature Extraction, and Cybersecurity Framework).
 *   **Salma S:** AI & Machine Learning Engineering (Lead for Model Architecture, Training Pipelines, and Evaluation).
 
+
+
+```mermaid
 graph TD
     A["<b>Dataset Input</b><br/>Merged Datasets"]
     B["<b>Data Processing</b><br/>Cleaning & Label Encoding"]
@@ -102,3 +105,4 @@ graph TD
     %% Styling to match the original image colors
     classDef blueBox fill:#7eb5e6,stroke:#2b7dbd,stroke-width:2px,color:#000;
     class A,B,C,D,E,F blueBox;
+```
