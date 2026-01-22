@@ -6,6 +6,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.metrics import
 import seaborn as sns
 import os
 import sys
@@ -14,13 +15,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import (
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    confusion_matrix
-)
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_curve, auc
+
 
 print("\n Libraries imported successfully.\n")
 # 2. Load Dataset
