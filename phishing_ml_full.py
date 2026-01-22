@@ -1,6 +1,6 @@
 # ==================================================
-# Phishing Website Detection - ML + ROC & AUC
-# Dataset-based (Result column: -1, 1)
+# Phishing Website Detection
+# ML Models + Soft Voting Fusion + ROC & AUC
 # ==================================================
 
 import os
@@ -31,15 +31,9 @@ os.makedirs("results/roc_curves", exist_ok=True)
 # LOAD DATASET
 # --------------------------------------------------
 DATA_PATH = "data/final_phishing_dataset.csv"
-
 df = pd.read_csv(DATA_PATH)
 
-print("Dataset loaded successfully")
-print("Shape:", df.shape)
-
-# --------------------------------------------------
-# HANDLE DUPLICATE COLUMNS (IMPORTANT FOR YOUR DATA)
-# --------------------------------------------------
+# Remove duplicate columns (important for your dataset)
 df = df.loc[:, ~df.columns.duplicated()]
 
 # --------------------------------------------------
@@ -48,13 +42,10 @@ df = df.loc[:, ~df.columns.duplicated()]
 TARGET_COLUMN = "Result"   # 1 = Phishing, -1 = Legitimate
 
 X = df.drop(columns=[TARGET_COLUMN])
-y = df[TARGET_COLUMN]
-
-# Convert labels: -1 → 0, 1 → 1 (REQUIRED FOR ROC)
-y = y.replace(-1, 0)
+y = df[TARGET_COLUMN].replace(-1, 0)   # Convert -1 → 0
 
 # --------------------------------------------------
-# TRAIN-TEST SPLIT
+# TRAIN TEST SPLIT
 # --------------------------------------------------
 X_train, X_test, y_train, y_test = train_test_split(
     X, y,
@@ -64,99 +55,115 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 # --------------------------------------------------
-# FEATURE SCALING
+# SCALING
 # --------------------------------------------------
 scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
 
 # --------------------------------------------------
 # MODELS
 # --------------------------------------------------
+lr_model = LogisticRegression(max_iter=1000)
+rf_model = RandomForestClassifier(
+    n_estimators=200,
+    random_state=42
+)
+
 models = {
-    "Logistic Regression": LogisticRegression(max_iter=1000),
-    "Random Forest": RandomForestClassifier(
-        n_estimators=200,
-        random_state=42
-    )
+    "Logistic Regression": lr_model,
+    "Random Forest": rf_model
 }
 
+results = []
+
 # --------------------------------------------------
-# TRAIN, EVALUATE, ROC & AUC
+# TRAIN & EVALUATE INDIVIDUAL MODELS
 # --------------------------------------------------
-summary = []
+for name, model in models.items():
+    model.fit(X_train, y_train)
 
-for model_name, model in models.items():
-    print(f"\nTraining {model_name}...")
+    y_pred = model.predict(X_test)
+    y_prob = model.predict_proba(X_test)[:, 1]
 
-    # Train model
-    model.fit(X_train_scaled, y_train)
-
-    # Predictions
-    y_pred = model.predict(X_test_scaled)
-    y_prob = model.predict_proba(X_test_scaled)[:, 1]
-
-    # Metrics
     acc = accuracy_score(y_test, y_pred)
     prec = precision_score(y_test, y_pred)
     rec = recall_score(y_test, y_pred)
     f1 = f1_score(y_test, y_pred)
 
-    # ROC & AUC
     fpr, tpr, _ = roc_curve(y_test, y_prob)
     roc_auc = auc(fpr, tpr)
 
-    summary.append([
-        model_name,
-        acc,
-        prec,
-        rec,
-        f1,
-        roc_auc
-    ])
+    results.append([name, acc, prec, rec, f1, roc_auc])
 
-    # --------------------------------------------------
-    # ROC CURVE PLOT
-    # --------------------------------------------------
-    plt.figure(figsize=(6, 5))
-    plt.plot(
-        fpr,
-        tpr,
-        label=f"{model_name} (AUC = {roc_auc:.2f})",
-        linewidth=2
-    )
-    plt.plot([0, 1], [0, 1], linestyle="--", color="red")
+    # ROC plot
+    plt.figure()
+    plt.plot(fpr, tpr, label=f"{name} (AUC={roc_auc:.2f})")
+    plt.plot([0, 1], [0, 1], '--')
     plt.xlabel("False Positive Rate")
     plt.ylabel("True Positive Rate")
-    plt.title(f"ROC Curve - {model_name}")
-    plt.legend(loc="lower right")
-    plt.grid(True)
-
-    roc_file = f"results/roc_curves/{model_name.lower().replace(' ', '_')}_roc.png"
-    plt.savefig(roc_file)
+    plt.title(f"ROC Curve - {name}")
+    plt.legend()
+    plt.grid()
+    plt.savefig(f"results/roc_curves/{name.lower().replace(' ', '_')}_roc.png")
     plt.close()
 
-    print(f"ROC curve saved → {roc_file}")
+# --------------------------------------------------
+# 🔥 SOFT VOTING FUSION MODEL
+# --------------------------------------------------
+print("\nApplying Soft Voting Fusion Model...")
+
+# Get probabilities from both models
+lr_prob = lr_model.predict_proba(X_test)[:, 1]
+rf_prob = rf_model.predict_proba(X_test)[:, 1]
+
+# Soft Voting (Average)
+fusion_prob = (lr_prob + rf_prob) / 2
+
+# Final prediction
+fusion_pred = (fusion_prob >= 0.5).astype(int)
+
+# Metrics
+fusion_acc = accuracy_score(y_test, fusion_pred)
+fusion_prec = precision_score(y_test, fusion_pred)
+fusion_rec = recall_score(y_test, fusion_pred)
+fusion_f1 = f1_score(y_test, fusion_pred)
+
+# ROC & AUC for Fusion
+fpr_fusion, tpr_fusion, _ = roc_curve(y_test, fusion_prob)
+fusion_auc = auc(fpr_fusion, tpr_fusion)
+
+results.append([
+    "Fusion Model (Soft Voting)",
+    fusion_acc,
+    fusion_prec,
+    fusion_rec,
+    fusion_f1,
+    fusion_auc
+])
+
+# ROC for Fusion
+plt.figure()
+plt.plot(fpr_fusion, tpr_fusion, label=f"Fusion Model (AUC={fusion_auc:.2f})", linewidth=2)
+plt.plot([0, 1], [0, 1], '--')
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC Curve - Fusion Model")
+plt.legend()
+plt.grid()
+plt.savefig("results/roc_curves/fusion_model_roc.png")
+plt.close()
 
 # --------------------------------------------------
-# SAVE PERFORMANCE SUMMARY
+# SAVE SUMMARY
 # --------------------------------------------------
 summary_df = pd.DataFrame(
-    summary,
-    columns=[
-        "Model",
-        "Accuracy",
-        "Precision",
-        "Recall",
-        "F1-Score",
-        "AUC"
-    ]
+    results,
+    columns=["Model", "Accuracy", "Precision", "Recall", "F1-Score", "AUC"]
 )
 
-summary_path = "results/model_performance_summary.csv"
-summary_df.to_csv(summary_path, index=False)
+summary_df.to_csv("results/model_performance_summary.csv", index=False)
 
 print("\nMODEL PERFORMANCE SUMMARY")
 print(summary_df)
-print(f"\nSummary saved → {summary_path}")
-print("ROC & AUC generation completed successfully.")
+print("\nFusion model completed successfully.")
