@@ -1,90 +1,162 @@
-# ==========================================
-# Phishing Website Detection using ML
-# ==========================================
+# ==================================================
+# Phishing Website Detection - ML + ROC & AUC
+# Dataset-based (Result column: -1, 1)
+# ==================================================
 
-# 1. Import Required Libraries
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import
-import seaborn as sns
-import os
-import sys
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_curve, auc
-
-
-print("\n Libraries imported successfully.\n")
-# 2. Load Dataset
-DATASET_PATH = "data/phishing_dataset.csv"
-
-df = pd.read_csv(
-    DATASET_PATH,
-    encoding="utf-8",
-    engine="python",
-    on_bad_lines="skip"
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_curve,
+    auc
 )
 
-print(df.head())
-print(df.shape)
+# --------------------------------------------------
+# CREATE OUTPUT DIRECTORIES
+# --------------------------------------------------
+os.makedirs("results", exist_ok=True)
+os.makedirs("results/roc_curves", exist_ok=True)
 
+# --------------------------------------------------
+# LOAD DATASET
+# --------------------------------------------------
+DATA_PATH = "data/final_phishing_dataset.csv"
 
-if not os.path.exists(DATASET_PATH):
-    print("❌ Dataset not found!")
-    print("Expected path:", DATASET_PATH)
-    sys.exit(1)
+df = pd.read_csv(DATA_PATH)
 
+print("Dataset loaded successfully")
+print("Shape:", df.shape)
 
+# --------------------------------------------------
+# HANDLE DUPLICATE COLUMNS (IMPORTANT FOR YOUR DATA)
+# --------------------------------------------------
+df = df.loc[:, ~df.columns.duplicated()]
 
-print(" Dataset loaded successfully.")
-print("Shape of dataset:", df.shape)
-# 3. Data Preprocessing
+# --------------------------------------------------
+# TARGET & FEATURES
+# --------------------------------------------------
+TARGET_COLUMN = "Result"   # 1 = Phishing, -1 = Legitimate
 
-# Method 1: Drop missing values
-df_drop = df.dropna()
+X = df.drop(columns=[TARGET_COLUMN])
+y = df[TARGET_COLUMN]
 
-# Method 2: Fill missing values with mean
-df_fill = df.fillna(df.mean(numeric_only=True))
+# Convert labels: -1 → 0, 1 → 1 (REQUIRED FOR ROC)
+y = y.replace(-1, 0)
 
-print("\n Preprocessing done.")
-print("After dropna shape:", df_drop.shape)
-print("After fillna shape:", df_fill.shape)
+# --------------------------------------------------
+# TRAIN-TEST SPLIT
+# --------------------------------------------------
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
 
-# Use fillna version for training
-df = df_fill
-# 4. Display Dataset Details
+# --------------------------------------------------
+# FEATURE SCALING
+# --------------------------------------------------
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
 
-print("\n Dataset Head:")
-print(df.head())
+# --------------------------------------------------
+# MODELS
+# --------------------------------------------------
+models = {
+    "Logistic Regression": LogisticRegression(max_iter=1000),
+    "Random Forest": RandomForestClassifier(
+        n_estimators=200,
+        random_state=42
+    )
+}
 
-print("\nDataset Tail:")
-print(df.tail())
+# --------------------------------------------------
+# TRAIN, EVALUATE, ROC & AUC
+# --------------------------------------------------
+summary = []
 
-print("\nDataset Info:")
-print(df.info())
-# 5. Check Label Column
+for model_name, model in models.items():
+    print(f"\nTraining {model_name}...")
 
-'''f 'label' not in df.columns:
-    print("❌ Label column not found!")
-    sys.exit(1)
+    # Train model
+    model.fit(X_train_scaled, y_train)
 
-print("\n Label value counts:")
-print(df['label'].value_counts())
+    # Predictions
+    y_pred = model.predict(X_test_scaled)
+    y_prob = model.predict_proba(X_test_scaled)[:, 1]
 
-# Fix incorrect labels
-df['label'] = df['label'].apply(lambda x: 1 if x == 1 else 0)
-# Feature & Target split
-X = df.drop('label', axis=1)
-y = df['Result']'''
-label_col = 'Result'
+    # Metrics
+    acc = accuracy_score(y_test, y_pred)
+    prec = precision_score(y_test, y_pred)
+    rec = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
 
-print(df[label_col].value_counts())
+    # ROC & AUC
+    fpr, tpr, _ = roc_curve(y_test, y_prob)
+    roc_auc = auc(fpr, tpr)
 
-df[label_col] = df[label_col].apply(lambda x: 1 if x == 1 else 0)
+    summary.append([
+        model_name,
+        acc,
+        prec,
+        rec,
+        f1,
+        roc_auc
+    ])
 
-X = df.drop(label_col, axis=1)
-y = df[label_col]
+    # --------------------------------------------------
+    # ROC CURVE PLOT
+    # --------------------------------------------------
+    plt.figure(figsize=(6, 5))
+    plt.plot(
+        fpr,
+        tpr,
+        label=f"{model_name} (AUC = {roc_auc:.2f})",
+        linewidth=2
+    )
+    plt.plot([0, 1], [0, 1], linestyle="--", color="red")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title(f"ROC Curve - {model_name}")
+    plt.legend(loc="lower right")
+    plt.grid(True)
+
+    roc_file = f"results/roc_curves/{model_name.lower().replace(' ', '_')}_roc.png"
+    plt.savefig(roc_file)
+    plt.close()
+
+    print(f"ROC curve saved → {roc_file}")
+
+# --------------------------------------------------
+# SAVE PERFORMANCE SUMMARY
+# --------------------------------------------------
+summary_df = pd.DataFrame(
+    summary,
+    columns=[
+        "Model",
+        "Accuracy",
+        "Precision",
+        "Recall",
+        "F1-Score",
+        "AUC"
+    ]
+)
+
+summary_path = "results/model_performance_summary.csv"
+summary_df.to_csv(summary_path, index=False)
+
+print("\nMODEL PERFORMANCE SUMMARY")
+print(summary_df)
+print(f"\nSummary saved → {summary_path}")
+print("ROC & AUC generation completed successfully.")
